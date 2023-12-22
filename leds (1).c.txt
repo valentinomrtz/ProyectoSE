@@ -1,0 +1,60 @@
+
+#pragma config CPD = OFF, BOREN = OFF, IESO = OFF, DEBUG = OFF, FOSC = HS
+#pragma config FCMEN = OFF, MCLRE = ON, WDTE = OFF, CP = OFF, LVP = OFF
+#pragma config PWRTE = ON, BOR4V = BOR21V, WRT = OFF
+#pragma intrinsic(_delay)
+#define _XTAL_FREQ 20000000 // necessary for __delay_us
+
+#include <xc.h>
+#include "spi-master-v1.h"
+#include <stdio.h>
+#include <stdint.h>
+#include <stdlib.h>
+
+void setColor(char lum, char r, char g, char b) {
+    int N = 10;
+    for (int i = 0; i < 4; i++) {
+        spi_write_read(0b00000000);
+    }
+
+    for (int i = 0; i < N; i++) {
+        spi_write_read(((0b111) | lum));
+        //spi_write_read(0b11111111);
+        spi_write_read(b);
+        spi_write_read(g);
+        spi_write_read(r);
+    }
+
+    for (int i = 0; i < 4; i++) {
+        spi_write_read(0b11111111);
+    }
+
+}
+
+void configLeds() {
+    uint8_t r = 255;
+    uint8_t g = 0;
+    uint8_t b = 0;
+    uint8_t lum = 31;
+    while (1) {
+        setColor((char) lum, 255, 0, 0);
+        __delay_us(300000);
+
+        setColor((char) lum, 0, 255, 0);
+        __delay_us(300000);
+
+        setColor((char) lum, 0, 0, 255);
+        __delay_us(300000);
+
+    }
+}
+
+void main(void) {
+    TRISC5 = 0;
+    TRISC2 = 0;
+
+    OSCCON = 0b00001000; // External cristal
+    configLeds();
+    while (1);
+
+}
