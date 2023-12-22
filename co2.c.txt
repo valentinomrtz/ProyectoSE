@@ -1,0 +1,141 @@
+// See /opt/microchip/xc8/v{ver}/docs/chips/16f886.html
+// for details on #pragma config
+
+#pragma config CPD = OFF, BOREN = OFF, IESO = OFF, DEBUG = OFF, FOSC = HS
+#pragma config FCMEN = OFF, MCLRE = ON, WDTE = OFF, CP = OFF, LVP = OFF
+#pragma config PWRTE = ON, BOR4V = BOR21V, WRT = OFF
+#pragma intrinsic(_delay)
+#define _XTAL_FREQ 20000000 // necessary for __delay_us
+
+#include <xc.h>
+#include <stdio.h>
+#include "i2c-v2.h"
+#include <stdint.h>
+#include <proc/pic16f886.h>
+
+#define IAQ_CORE_ADDR 0x5A
+/*
+Info IMPORTANTE:
+
+-El sensor obtiene la primera lectura funcional después de 5 min.
+
+*/
+uint16_t CO2;
+uint16_t TVoc;
+uint16_t status;
+
+void read_CO2()
+{
+  int ack;
+  unsigned char buff[9];
+
+  i2c_start();
+  ack = i2c_write((IAQ_CORE_ADDR << 1) | 1);
+  ack = 1;
+  buff[0] = i2c_read(ack); // CO2
+  buff[1] = i2c_read(ack);
+
+  buff[2] = i2c_read(ack); // Status
+
+  buff[3] = i2c_read(ack); // Valor
+  buff[4] = i2c_read(ack); //   de
+  buff[5] = i2c_read(ack); //   la
+  buff[6] = i2c_read(ack); // Resistencia
+
+  buff[7] = i2c_read(ack); // Tvoc
+  ack = 0;
+  buff[8] = i2c_read(ack); // Tvoc
+  i2c_stop();
+
+  // Formula de la prediccion: Prediction CO2 = byte0 *2^8 + byte1
+
+  CO2 = (buff[0] << 8) | buff[1];
+  TVoc = (buff[7] << 8) | buff[8];
+
+  status = buff[2];
+  /*
+      0x00 OK
+      0x01 Busy
+      0x80 ERROR
+  */
+}
+
+uint16_t get_CO2()
+{
+  return CO2;
+}
+
+uint16_t get_Tvoc()
+{
+  return TVoc;
+}
+
+uint16_t get_status()
+{
+  return status;
+}
+
+void init_uart(void)
+{
+  TXSTAbits.BRGH = 0;
+  BAUDCTLbits.BRG16 = 0;
+
+  // SPBRGH:SPBRG =
+  SPBRGH = 0b00000000;
+  SPBRG = 0b00100000; // 9600 baud rate with 20MHz Clock
+
+  TXSTAbits.SYNC = 0; /* Asynchronous */
+  TXSTAbits.TX9 = 0;  /* TX 8 data bit */
+  RCSTAbits.RX9 = 0;  /* RX 8 data bit */
+
+  PIE1bits.TXIE = 0; /* Disable TX interrupt */
+  PIE1bits.RCIE = 0; /* Disable RX interrupt */
+
+  RCSTAbits.SPEN = 1; /* Serial port enable */
+
+  TXSTAbits.TXEN = 0; /* Reset transmitter */
+  TXSTAbits.TXEN = 1; /* Enable transmitter */
+}
+
+void I2C_Init()
+{
+
+  SSPCON = 0b00101000;
+
+  // Configuración de velocidad I2C (Frecuencia de reloj = Frecuencia de reloj del oscilador / (4 * (SSPADD + 1)))
+  SSPADD = ((_XTAL_FREQ / 4) / 100000) - 1;
+  
+  // Habilitar el módulo I2C
+  SSPIE = 0; // Deshabilitar interrupciones para el módulo I2C
+  SSPIF = 0;
+  PEIE = 1; // Habilitar interrupciones periféricas globales
+}
+
+void putch(char c)
+{
+  while (!TRMT)
+  {           // check buffer
+    continue; // wait till ready
+  }
+  TXREG = c; // send data
+}
+
+void main(void)
+{
+
+  OSCCON = 0b00001000; // External cristal
+
+  GIE = 1; // Habilitar todas las interrupciones globales
+
+  I2C_Init();
+  init_uart();
+
+  while (1)
+  {
+    read_CO2();
+    printf("Co2: %d\n", CO2);
+    printf("TVoc: %d\n", CO2);
+
+    __delay_us(1000000);
+  }
+}
